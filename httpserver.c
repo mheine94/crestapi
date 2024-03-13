@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <winsock2.h>
-#include "httpserver.h"
+#include "libhttpserver.h"
 
 
 struct RouteHandler {
@@ -234,7 +234,10 @@ int serializeResponse(struct HTTPResponse* res, char* buf){
 } 
 
 struct HTTPRequest* parseRequest(char* request){
+    printf("Request was\n%s\n\n", request);
     struct HTTPRequest* httpRequest = malloc(sizeof(struct HTTPRequest));
+    httpRequest->headers = NULL;
+    httpRequest->body = NULL;
 
     int i;
     for(i = 0; i < 10 && request[i] != '\0'; i ++){
@@ -260,9 +263,77 @@ struct HTTPRequest* parseRequest(char* request){
             httpRequest->path[pathLen] = '\0';
             
             printf("%s\n", httpRequest->path);
-            return httpRequest;
+            break;
         }
     }
+    //printf("_____PATH___PARSED_____\n");
+    for(; j < 1000 && request[j] != '\0'; j++){
+        if(request[j] == '\n'){
+            //printf("newline ffound\n");
+            j++;
+            break;
+        }
+    }
+    //printf("_____HEADER_START_FOUND_____\n");
+    int stringStart = j;
+    char* headerName = NULL;
+    char* headerValue = NULL;
+    int parseHeaderState = 0;
+
+    struct HTTPHeader* current = NULL;
+
+    for(; j < 1000 && request[j] != '\0'; j++){
+        printf("%c", request[j]);
+        if(parseHeaderState == 0 && request[j] != '\n'){
+            stringStart = j;
+            //printf("found header name start %d\n", j);
+            parseHeaderState = 1;
+        } else if(parseHeaderState == 0 && request[j] == '\n'){
+            break;
+        } else if(parseHeaderState == 1 && request[j] != ':'){
+           
+        } else if(parseHeaderState == 1 && request[j] == ':'){
+            //printf("\n");
+            //printf("_____FOUND____NAME______\n");
+            int len = (j) - stringStart;
+            headerName = malloc(sizeof(char) * (len+1));
+            for(int k = 0; stringStart + k < j; k++){
+                headerName[k] = request[stringStart+k];
+            } 
+            headerName[len] = '\0';
+            //printf("Header Name: \'%s\'\n", headerName);
+            parseHeaderState = 2;
+        } else if(parseHeaderState == 2 && request[j] == ' ') {
+            //printf("_____FOUND SPACE____\n");
+            stringStart = j+1;
+            parseHeaderState = 3;
+        } else if(parseHeaderState == 3 && request[j] == '\n'){
+            int len = j - stringStart;
+            headerValue = malloc(sizeof(char) * (len+1));
+            for(int k = 0; stringStart + k < j; k++){
+               headerValue[k] = request[stringStart+k];
+            } 
+            headerValue[len] = '\0';
+
+            //printf("_____FOUND____VALUE_____\n");
+            //printf("Header Value: \'%s\'\n", headerValue);
+            struct HTTPHeader* nextHeader = malloc(sizeof(struct HTTPHeader));
+            nextHeader->name = headerName;
+            nextHeader->value = headerValue;
+            nextHeader->next = NULL;
+            
+
+            if(httpRequest->headers == NULL){
+               httpRequest->headers = nextHeader;
+               current = nextHeader;
+            }else{
+               current->next = nextHeader;
+               current = nextHeader;
+            }
+            parseHeaderState = 0;
+        }
+    }
+    return httpRequest;
 }
 
 int read(SOCKET soc, char* buffer){
@@ -297,6 +368,18 @@ int read(SOCKET soc, char* buffer){
         char* request = malloc(sizeof(char) * (bytesRead+1));
         strcpy(request, buffer);
         struct HTTPRequest* parsedRequest = parseRequest(request);
+        /*printf("_____HEADERS_____\n");
+        struct HTTPHeader* header = parsedRequest->headers;
+        while(1){
+            printf("%s: %s\n", header->name, header->value);
+            if(header->next == NULL){
+                break;
+            }
+            header = header->next;
+        }
+        
+        printf("_____HEADERS__END___\n");
+        */
         struct HTTPResponse* response;
 
         int foundHandler = 0;
