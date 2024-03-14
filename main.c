@@ -4,70 +4,29 @@
 #include "libhttpserver.h"
 #include "libcjson.h"
 
+
+char* copyString(int start, int end, char* source){
+    int len = end - start;
+    char* string = malloc(sizeof(char) * (len+1));
+    for(int i = 0; start + i < end; i++){
+        string[i] = source[start+i];
+    } 
+    string[len] = '\0';
+    return string;
+}
+
 struct HTTPResponse* handleRoot(struct HTTPRequest* request){
     struct HTTPResponse* res = malloc(sizeof(struct HTTPResponse));
     res->code = 200;
     res->contentType = TEXT_HTML;
     char contentString[] = "Hello World!";
     res->contentLength = strlen(contentString);
-    res->content = malloc(sizeof(char)* strlen(contentString));
-    strcpy(res->content, contentString);
+    res->content = copyString(0, strlen(contentString), contentString);
 
     return res;
 }
 
-struct HTTPResponse* handleHelloJson(struct HTTPRequest* request){
-    struct HTTPResponse* res = malloc(sizeof(struct HTTPResponse));
-    res->code = 200;
-    res->contentType = APPLICATION_JSON;
 
-    
-    JSON* json = CJSON.newObj();
-    char wor[] = "world";
-    char* worp = malloc(strlen(wor)*sizeof(char));
-    strcpy(worp, (char*) wor);
-    CJSON.objSet(json, "hello", CJSON.newStringValue(worp));
-    CJSON.objSet(json, "raining", CJSON.newBooleanValue(1));
-    JSON* array = CJSON.newArrayValue();
-    CJSON.arrayPush(array, CJSON.newIntValue(1));
-    CJSON.arrayPush(array, CJSON.newBooleanValue(0));
-    char arrstr[] = "a";
-    char* w2 = malloc(strlen(arrstr)*sizeof(char));
-    strcpy(w2, (char*) arrstr);
-    CJSON.arrayPush(array, CJSON.newStringValue(w2));
-    CJSON.arrayPush(array, CJSON.newNullValue());
-    CJSON.arrayPush(array, CJSON.newArrayValue());
-    JSON* array2 = CJSON.newArrayValue();
-    CJSON.arrayPush(array2, CJSON.newBooleanValue(0));
-    CJSON.arrayPush(array, array2);
-
-    CJSON.objSet(json, "myarray", array);
-    
-    char version[] = "version";
-    char* vp = malloc(strlen(version)*sizeof(char));
-    strcpy(vp, (char*) version);
-    CJSON.objSet(json, vp , CJSON.newIntValue(1));
-    char* jsonString = CJSON.stringify(json);
-    CJSON.free(json);
-
-
-    res->content = jsonString;
-    res->contentLength = strlen(res->content);
-
-    return res;
-}
-
-struct HTTPResponse* handleTest(struct HTTPRequest* request){
-    struct HTTPResponse* res = malloc(sizeof(struct HTTPResponse));
-    res->code = 200;
-    res->contentType = APPLICATION_JSON;
-    char contentString[] = "{ \"hello\": \"world\"}";
-    res->contentLength = strlen(contentString);
-    res->content = malloc(sizeof(char)* strlen(contentString));
-    strcpy(res->content, contentString);
-
-    return res;
-}
 
 struct HTTPResponse* handleEcho(struct HTTPRequest* request){
     struct HTTPResponse* res = malloc(sizeof(struct HTTPResponse));
@@ -76,10 +35,23 @@ struct HTTPResponse* handleEcho(struct HTTPRequest* request){
 
     JSON* json = CJSON.newObj();
 
+    switch (request->method)
+    {
+    case GET:
+        CJSON.objSet(json, "method", CJSON.newStringValue(copyString(0, 4, "GET")));
+        break; 
+    default:
+        CJSON.objSet(json, "method", CJSON.newStringValue(copyString(0, 12, "unsupported")));
+        break;
+    }
+    CJSON.objSet(json, "path", CJSON.newStringValue(request->path));
+
     if(request->headers != NULL){
         JSON* headers = CJSON.newObj();
         struct HTTPHeader* header = request->headers;
+
         while(1){
+            //printf("HEADERNAME: \'%s\' HEADERVALUE: \'%s\'\n", header->name, header->value);
             CJSON.objSet(headers, header->name, CJSON.newStringValue(header->value));
             if(header->next == NULL){
                 break;
@@ -100,8 +72,6 @@ struct HTTPResponse* handleEcho(struct HTTPRequest* request){
 
 int main(){
     addMapping("/", handleRoot);
-    addMapping("/test", handleTest);
-    addMapping("/hello", handleHelloJson);
     addMapping("/echo", handleEcho);
     
     startServer("127.0.0.1", 8080);

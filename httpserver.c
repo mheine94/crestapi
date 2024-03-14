@@ -13,6 +13,16 @@ struct RouteHandler {
 struct RouteHandler* handlers = NULL;
 int runServer = 0;
 
+char* copyString(int start, int end, char* source){
+    int len = end - start;
+    char* string = malloc(sizeof(char) * (len+1));
+    for(int i = 0; start + i < end; i++){
+        string[i] = source[start+i];
+    } 
+    string[len] = '\0';
+    return string;
+}
+
 char* getResponse(char* request);
 
 int initWindowsSockets(){
@@ -255,13 +265,7 @@ struct HTTPRequest* parseRequest(char* request){
     int j;
     for(j = i+1; j < 1000 && request[j] != '\0'; j++){
         if(request[j] == ' '){
-            int pathLen =  j-(i+1);
-            httpRequest->path = malloc(sizeof(char) * (pathLen+1));
-            for(int k = 0; k < pathLen; k++){
-                httpRequest->path[k] = request[i+1+k];
-            }
-            httpRequest->path[pathLen] = '\0';
-            
+            httpRequest->path = copyString(i+1, j, request);
             printf("%s\n", httpRequest->path);
             break;
         }
@@ -295,33 +299,21 @@ struct HTTPRequest* parseRequest(char* request){
         } else if(parseHeaderState == 1 && request[j] == ':'){
             //printf("\n");
             //printf("_____FOUND____NAME______\n");
-            int len = (j) - stringStart;
-            headerName = malloc(sizeof(char) * (len+1));
-            for(int k = 0; stringStart + k < j; k++){
-                headerName[k] = request[stringStart+k];
-            } 
-            headerName[len] = '\0';
+            headerName = copyString(stringStart, j, request);
             //printf("Header Name: \'%s\'\n", headerName);
             parseHeaderState = 2;
         } else if(parseHeaderState == 2 && request[j] == ' ') {
             //printf("_____FOUND SPACE____\n");
             stringStart = j+1;
             parseHeaderState = 3;
-        } else if(parseHeaderState == 3 && request[j] == '\n'){
-            int len = j - stringStart;
-            headerValue = malloc(sizeof(char) * (len+1));
-            for(int k = 0; stringStart + k < j; k++){
-               headerValue[k] = request[stringStart+k];
-            } 
-            headerValue[len] = '\0';
-
+        } else if(parseHeaderState == 3 && request[j] == '\r' && request[j+1] == '\n'){
+            headerValue = copyString(stringStart, j, request); 
             //printf("_____FOUND____VALUE_____\n");
             //printf("Header Value: \'%s\'\n", headerValue);
             struct HTTPHeader* nextHeader = malloc(sizeof(struct HTTPHeader));
             nextHeader->name = headerName;
             nextHeader->value = headerValue;
             nextHeader->next = NULL;
-            
 
             if(httpRequest->headers == NULL){
                httpRequest->headers = nextHeader;
@@ -330,6 +322,8 @@ struct HTTPRequest* parseRequest(char* request){
                current->next = nextHeader;
                current = nextHeader;
             }
+            //skip \n from cr lf
+            j++;
             parseHeaderState = 0;
         }
     }
