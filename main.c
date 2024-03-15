@@ -35,14 +35,13 @@ struct HTTPResponse* handleEcho(struct HTTPRequest* request){
 
     JSON* json = CJSON.newObj();
 
-    switch (request->method)
-    {
-    case GET:
-        CJSON.objSet(json, "method", CJSON.newStringValue(copyString(0, 4, "GET")));
-        break; 
-    default:
-        CJSON.objSet(json, "method", CJSON.newStringValue(copyString(0, 12, "unsupported")));
-        break;
+    switch (request->method){
+        case GET:
+            CJSON.objSet(json, "method", CJSON.newStringValue(copyString(0, 4, "GET")));
+            break; 
+        default:
+            CJSON.objSet(json, "method", CJSON.newStringValue(copyString(0, 12, "unsupported")));
+            break;
     }
     CJSON.objSet(json, "path", CJSON.newStringValue(request->path));
 
@@ -63,6 +62,13 @@ struct HTTPResponse* handleEcho(struct HTTPRequest* request){
     } else {
         CJSON.objSet(json, "headers", CJSON.newNullValue());
     }
+    
+    if(request->body != NULL){
+        CJSON.objSet(json, "body", CJSON.newStringValue(request->body));
+    } else {
+        CJSON.objSet(json, "body", CJSON.newNullValue());
+    }
+
     char * string = CJSON.stringify(json);
     res->content = string;
     res->contentLength = strlen(string); 

@@ -287,12 +287,14 @@ struct HTTPRequest* parseRequest(char* request){
     struct HTTPHeader* current = NULL;
 
     for(; j < 1000 && request[j] != '\0'; j++){
-        printf("%c", request[j]);
-        if(parseHeaderState == 0 && request[j] != '\n'){
+        //printf("%c", request[j]);
+        if(parseHeaderState == 0 && request[j] != '\r'){
+           
             stringStart = j;
             //printf("found header name start %d\n", j);
             parseHeaderState = 1;
-        } else if(parseHeaderState == 0 && request[j] == '\n'){
+        } else if(parseHeaderState == 0 && request[j] == '\r'){
+            j+=2;
             break;
         } else if(parseHeaderState == 1 && request[j] != ':'){
            
@@ -327,6 +329,18 @@ struct HTTPRequest* parseRequest(char* request){
             parseHeaderState = 0;
         }
     }
+    
+    int bodyStart = j;
+    for(;  j< 1000 && request[j] != '\0'; j++){
+        //printf("%c", request[j]);
+    }
+
+    if(bodyStart != j){
+        httpRequest->body = copyString(bodyStart, j, request);
+    } else{
+        httpRequest->body = NULL;
+    }
+
     return httpRequest;
 }
 
@@ -345,22 +359,22 @@ int read(SOCKET soc, char* buffer){
     } else{
         wprintf(L"Client connected.\n");
         
-        int totalBytesRead = 0;
+
         int bytesRead = 0;
-        do {
-            bytesRead = recv(acceptSocket, buffer, 5000, 0);
-            if(bytesRead == 0){
-                printf("Connection closed\n");
-            }else if(bytesRead > 0){
-                printf("Read %d bytes..\n", bytesRead);
-            }else {
-                printf("Error\n");
-            }
-            totalBytesRead += bytesRead;
-        } while(1 ==0  && bytesRead > 0);
+    
+        memset(buffer, '\0', sizeof(char)* 5000);
+        bytesRead = recv(acceptSocket, buffer, 5000, 0);
+        if(bytesRead == 0){
+            printf("Connection closed\n");
+        }else if(bytesRead > 0){
+            printf("Read %d bytes..\n", bytesRead);
+        }else {
+            printf("Error\n");
+        }
+      
         buffer[bytesRead] = '\0';
-        char* request = malloc(sizeof(char) * (bytesRead+1));
-        strcpy(request, buffer);
+        
+        char* request = copyString(0, bytesRead+1, (char*) buffer);
         struct HTTPRequest* parsedRequest = parseRequest(request);
         /*printf("_____HEADERS_____\n");
         struct HTTPHeader* header = parsedRequest->headers;
