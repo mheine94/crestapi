@@ -331,7 +331,7 @@ struct HTTPRequest* parseRequest(char* request){
     }
     
     int bodyStart = j;
-    for(;  j< 1000 && request[j] != '\0'; j++){
+    for(;request[j] != '\0'; j++){
         //printf("%c", request[j]);
     }
 
@@ -358,7 +358,6 @@ int read(SOCKET soc, char* buffer){
         return 1;
     } else{
         wprintf(L"Client connected.\n");
-        
 
         int bytesRead = 0;
     
@@ -376,18 +375,6 @@ int read(SOCKET soc, char* buffer){
         
         char* request = copyString(0, bytesRead+1, (char*) buffer);
         struct HTTPRequest* parsedRequest = parseRequest(request);
-        /*printf("_____HEADERS_____\n");
-        struct HTTPHeader* header = parsedRequest->headers;
-        while(1){
-            printf("%s: %s\n", header->name, header->value);
-            if(header->next == NULL){
-                break;
-            }
-            header = header->next;
-        }
-        
-        printf("_____HEADERS__END___\n");
-        */
         struct HTTPResponse* response;
 
         int foundHandler = 0;
@@ -417,6 +404,7 @@ int read(SOCKET soc, char* buffer){
         int rc = send(acceptSocket, (char*) &buf, len, 0);
         closesocket(acceptSocket);
         
+        // todo free parsed request
         free(response->content);
         free(response);
         free(request);
