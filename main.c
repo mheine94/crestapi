@@ -76,9 +76,22 @@ struct HTTPResponse* handleEcho(struct HTTPRequest* request){
     return res;
 }
 
+struct HTTPResponse* handleEchoParse(struct HTTPRequest* request){
+    struct HTTPResponse* res = malloc(sizeof(struct HTTPResponse));
+    res->code = 200;
+    res->contentType = APPLICATION_JSON;
+
+    JSON* json = CJSON.parse(request->body);
+    char* string = CJSON.stringify(json);
+    res->content = string;
+    res->contentLength = strlen(string); 
+    CJSON.free(json);
+    return res;
+}
+
 int main(){
     addMapping("/", handleRoot);
     addMapping("/echo", handleEcho);
-    
+    addMapping("/parse", handleEchoParse);    
     startServer("127.0.0.1", 8080);
 }
