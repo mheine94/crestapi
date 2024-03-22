@@ -250,6 +250,7 @@ struct HTTPRequest* parseRequest(char* request){
     struct HTTPRequest* httpRequest = malloc(sizeof(struct HTTPRequest));
     httpRequest->headers = NULL;
     httpRequest->body = NULL;
+    httpRequest->errorCode = 0;
 
     int i;
     for(i = 0; i < 10 && request[i] != '\0'; i ++){
@@ -287,7 +288,7 @@ struct HTTPRequest* parseRequest(char* request){
     int parseHeaderState = 0;
 
     struct HTTPHeader* current = NULL;
-
+    int finishedHeaderParsing= 0;
     for(; j < 1000 && request[j] != '\0'; j++){
         //printf("%c", request[j]);
         if(parseHeaderState == 0 && request[j] != '\r'){
@@ -296,6 +297,7 @@ struct HTTPRequest* parseRequest(char* request){
             //printf("found header name start %d\n", j);
             parseHeaderState = 1;
         } else if(parseHeaderState == 0 && request[j] == '\r'){
+            finishedHeaderParsing = 1;
             j+=2;
             break;
         } else if(parseHeaderState == 1 && request[j] != ':'){
@@ -331,6 +333,10 @@ struct HTTPRequest* parseRequest(char* request){
             parseHeaderState = 0;
         }
     }
+    if(finishedHeaderParsing == 0){
+        httpRequest->errorCode = 1;
+        return httpRequest;
+    }
     
     int bodyStart = j;
     for(;request[j] != '\0'; j++){
@@ -357,8 +363,17 @@ void* hello(void* arg){
 typedef struct ctx {
     char* requestData;
     SOCKET acceptSocket;
-    pthread_t threadId;
+    pthread_t* threadId;
 } RequestContext;
+
+struct HTTPResponse* errorResponse(){
+    struct HTTPResponse* r = malloc(sizeof(struct HTTPResponse));
+    r->code = 404;
+    r->contentLength = 0;
+    r->contentType = NONE;
+    r->content = NULL;
+    return r;
+}
 
 void* handleRequest(void* arg)
 {
@@ -366,33 +381,32 @@ void* handleRequest(void* arg)
  char* request = ctx->requestData;
  SOCKET acceptSocket = ctx->acceptSocket;
 
- printf("handling request from thread id=%d\n\n", ctx->threadId);
+ printf("handling request from thread id=%d\n\n", *ctx->threadId);
 
- struct HTTPRequest* parsedRequest = parseRequest(request);
-        struct HTTPResponse* response;
-
-        int foundHandler = 0;
-        struct RouteHandler* current = handlers;
-        while(current != NULL){
-            if(strcmp(parsedRequest->path, current->route) == 0){
-                printf("Found handler for path \"%s\"\n", parsedRequest->path);
-                printf("Handler path \"%s\"\n", current->route);
-                response = current->handler(parsedRequest);
-                break;
-            }else if(current->next != NULL){
-                printf("Check next handler\n");
-                current = current->next;
-            }else {
-                printf("No handler found for path %s\n", parsedRequest->path);
-                response = malloc(sizeof(struct HTTPResponse));
-                response->code = 404;
-                response->contentLength = 0;
-                response->contentType = NONE;
-                response->content = NULL;   
-                break;
+         struct HTTPRequest* parsedRequest = parseRequest(request); 
+         struct HTTPResponse* response;
+        if(parsedRequest->errorCode == 0){
+            int foundHandler = 0;
+            struct RouteHandler* current = handlers;
+            while(current != NULL){
+                if(strcmp(parsedRequest->path, current->route) == 0){
+                    printf("Found handler for path \"%s\"\n", parsedRequest->path);
+                    printf("Handler path \"%s\"\n", current->route);
+                    response = current->handler(parsedRequest);
+                    break;
+                }else if(current->next != NULL){
+                    printf("Check next handler\n");
+                    current = current->next;
+                }else {
+                    printf("No handler found for path %s\n", parsedRequest->path);
+                    response = errorResponse();
+                    break;
+                }
             }
+        } else {
+            response = errorResponse();
         }
-        char buf[5000];
+        char buf[20000];
         int len = serializeResponse(response, (char *) &buf);
         printf("Responded with:\n%.*s", len, (char*) &buf);
         int rc = send(acceptSocket, (char*) &buf, len, 0);
@@ -439,6 +453,7 @@ int readNextRequest(SOCKET soc, char* buffer){
         ctx->requestData = request;
         ctx->acceptSocket = acceptSocket;
         pthread_t threadId; 
+        ctx->threadId= &threadId;
         pthread_create(&threadId, NULL, handleRequest, ctx);
         pthread_join(threadId, NULL);
         return 0;

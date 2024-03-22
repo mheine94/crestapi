@@ -21,6 +21,7 @@ struct HTTPRequest {
     char* path;   
     struct HTTPHeader* headers;
     char* body;
+    int errorCode;
 };
 
 struct HTTPResponse {
