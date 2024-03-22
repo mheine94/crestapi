@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <winsock2.h>
 #include "libhttpserver.h"
+#include <pthread.h> 
+#include <unistd.h> 
 
 
 struct RouteHandler {
@@ -13,7 +15,7 @@ struct RouteHandler {
 struct RouteHandler* handlers = NULL;
 int runServer = 0;
 
-char* copyString(int start, int end, char* source){
+char* copyString2(int start, int end, char* source){
     int len = end - start;
     char* string = malloc(sizeof(char) * (len+1));
     for(int i = 0; start + i < end; i++){
@@ -265,7 +267,7 @@ struct HTTPRequest* parseRequest(char* request){
     int j;
     for(j = i+1; j < 1000 && request[j] != '\0'; j++){
         if(request[j] == ' '){
-            httpRequest->path = copyString(i+1, j, request);
+            httpRequest->path = copyString2(i+1, j, request);
             printf("%s\n", httpRequest->path);
             break;
         }
@@ -301,7 +303,7 @@ struct HTTPRequest* parseRequest(char* request){
         } else if(parseHeaderState == 1 && request[j] == ':'){
             //printf("\n");
             //printf("_____FOUND____NAME______\n");
-            headerName = copyString(stringStart, j, request);
+            headerName = copyString2(stringStart, j, request);
             //printf("Header Name: \'%s\'\n", headerName);
             parseHeaderState = 2;
         } else if(parseHeaderState == 2 && request[j] == ' ') {
@@ -309,7 +311,7 @@ struct HTTPRequest* parseRequest(char* request){
             stringStart = j+1;
             parseHeaderState = 3;
         } else if(parseHeaderState == 3 && request[j] == '\r' && request[j+1] == '\n'){
-            headerValue = copyString(stringStart, j, request); 
+            headerValue = copyString2(stringStart, j, request); 
             //printf("_____FOUND____VALUE_____\n");
             //printf("Header Value: \'%s\'\n", headerValue);
             struct HTTPHeader* nextHeader = malloc(sizeof(struct HTTPHeader));
@@ -336,7 +338,7 @@ struct HTTPRequest* parseRequest(char* request){
     }
 
     if(bodyStart != j){
-        httpRequest->body = copyString(bodyStart, j, request);
+        httpRequest->body = copyString2(bodyStart, j, request);
     } else{
         httpRequest->body = NULL;
     }
@@ -344,37 +346,29 @@ struct HTTPRequest* parseRequest(char* request){
     return httpRequest;
 }
 
-int read(SOCKET soc, char* buffer){
-    //----------------------
-    wprintf(L"Waiting for client to connect...\n");
-    SOCKET acceptSocket = INVALID_SOCKET;
-    //----------------------
-    // Accept the connection.
-    acceptSocket = accept(soc, NULL, NULL);
-    if (acceptSocket == INVALID_SOCKET) {
-        wprintf(L"accept failed with error: %ld\n", WSAGetLastError());
-        closesocket(soc);
-        WSACleanup();
-        return 1;
-    } else{
-        wprintf(L"Client connected.\n");
+void* hello(void* arg){
+    printf("hello from thread\n");
+    printf("arg is '%s' from thread\n", (char*) arg);
+    sleep(5);
 
-        int bytesRead = 0;
-    
-        memset(buffer, '\0', sizeof(char)* 5000);
-        bytesRead = recv(acceptSocket, buffer, 5000, 0);
-        if(bytesRead == 0){
-            printf("Connection closed\n");
-        }else if(bytesRead > 0){
-            printf("Read %d bytes..\n", bytesRead);
-        }else {
-            printf("Error\n");
-        }
-      
-        buffer[bytesRead] = '\0';
-        
-        char* request = copyString(0, bytesRead+1, (char*) buffer);
-        struct HTTPRequest* parsedRequest = parseRequest(request);
+    printf("waited\n");
+}
+
+typedef struct ctx {
+    char* requestData;
+    SOCKET acceptSocket;
+    pthread_t threadId;
+} RequestContext;
+
+void* handleRequest(void* arg)
+{
+ RequestContext* ctx = arg; 
+ char* request = ctx->requestData;
+ SOCKET acceptSocket = ctx->acceptSocket;
+
+ printf("handling request from thread id=%d\n\n", ctx->threadId);
+
+ struct HTTPRequest* parsedRequest = parseRequest(request);
         struct HTTPResponse* response;
 
         int foundHandler = 0;
@@ -408,9 +402,50 @@ int read(SOCKET soc, char* buffer){
         free(response->content);
         free(response);
         free(request);
+}
+
+int readNextRequest(SOCKET soc, char* buffer){
+    //----------------------
+    wprintf(L"Waiting for client to connect...\n");
+    SOCKET acceptSocket = INVALID_SOCKET;
+    //----------------------
+    // Accept the connection.
+    acceptSocket = accept(soc, NULL, NULL);
+    if (acceptSocket == INVALID_SOCKET) {
+        wprintf(L"accept failed with error: %ld\n", WSAGetLastError());
+        closesocket(soc);
+        WSACleanup();
+        return 1;
+    } else{
+        wprintf(L"Client connected.\n");
+
+        int bytesRead = 0;
+    
+        memset(buffer, '\0', sizeof(char)* 5000);
+        bytesRead = recv(acceptSocket, buffer, 5000, 0);
+        if(bytesRead == 0){
+            printf("Connection closed\n");
+        }else if(bytesRead > 0){
+            printf("Read %d bytes..\n", bytesRead);
+        }else {
+            printf("Error\n");
+        }
+      
+        buffer[bytesRead] = '\0';
+
+
+        RequestContext* ctx = malloc(sizeof(RequestContext));
+        char* request = copyString2(0, bytesRead+1, (char*) buffer);
+        ctx->requestData = request;
+        ctx->acceptSocket = acceptSocket;
+        pthread_t threadId; 
+        pthread_create(&threadId, NULL, handleRequest, ctx);
+        pthread_join(threadId, NULL);
         return 0;
     }
 }
+
+
 
 void addMapping(char path[], struct HTTPResponse* (*handler)(struct HTTPRequest* request)){
     struct RouteHandler* newHandler = malloc(sizeof(struct RouteHandler));
@@ -451,7 +486,7 @@ int startServer(char* ip, int port){
                 for(int i = 0; i< 5000; i++){
                     buffer[i] = '\0';
                 }
-                rc = read(soc, buffer);
+                rc = readNextRequest(soc, buffer);
             }
             free(buffer);
         }
